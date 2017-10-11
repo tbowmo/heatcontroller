@@ -35,10 +35,13 @@ static heatState shHeating         = { HeatingTransition, Heating };
 static heatState shCooling         = { CoolingTransition, Cooling };
 static heatState shCheckFloorTemp  = { CheckFloorTempWhileCoolingTransition, CheckFloorTempWhileCooling };
 static heatState shWaitForHotWater = { NULL, WaitForHotWater };
+static heatState shSummer          = { SummerModeTransition, SummerMode };
 /**********************************/
 
 /********* States *************/
 void HeatingTransition() {
+  Serial.print(_heatSM.rtc->getEpoch());
+  Serial.println(" Heat transition");
   setValve(true);
   setPump(true);
 }
@@ -50,6 +53,8 @@ void Heating() {
 }
 
 void CoolingTransition() {
+  Serial.print(_heatSM.rtc->getEpoch());
+  Serial.println(" cooling transition");
   setValve(false);
   setPump(false);
 }
@@ -61,6 +66,8 @@ void Cooling() {
 }
 
 void CheckFloorTempWhileCoolingTransition() {
+  Serial.print(_heatSM.rtc->getEpoch());
+  Serial.println(" Check floor transition");
   setPump(true);
 }
 
@@ -82,6 +89,15 @@ void WaitForHotWater() {
   }
 }
 
+void SummerModeTransition() {
+  setValve(false);
+  setPump(false);
+}
+
+void SummerMode() {
+  // Do nothing, as summer mode is powered off
+}
+
 /**
  * "public" methods
  **/
@@ -101,7 +117,7 @@ void setValve(bool state) {
   if (_heatSM.valve != state) {
     _heatSM.valve = state;
     digitalWrite(HEAT_VALVE, state); // Turn on heat valve
-    heatCallback(state, _heatSM.pump);
+   // heatCallback(state, _heatSM.pump);
   }
 }
 
@@ -109,7 +125,7 @@ void setPump(bool state) {
   if (_heatSM.pump != state) {
     _heatSM.pump = state;
     digitalWrite(CIRC_PUMP, state);
-    heatCallback(_heatSM.valve, state);
+   // heatCallback(_heatSM.valve, state);
   }
 }
 
@@ -118,5 +134,6 @@ void init(RTCZero* rtc, float temperature, void(*sendCallback)(bool, bool)) {
   _heatSM.hotWaterThreshold = 50;
   _heatSM.rtc = rtc;
   heatSwitchSM(shHeating);
+  sendCallback(false, false);
   heatCallback = sendCallback;
 }

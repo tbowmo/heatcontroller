@@ -76,14 +76,21 @@ float lastTemperature[4];
 float currTemperature[4];
 
 void saveFloorTemp(float temp) {
-  uint16_t t = temp*10;
   Serial.print("Storing value ");
-  Serial.println(t);
-  
+  uint16_t t = temp*10;
+  saveState(0, t & 0xff);
+  Serial.print(t & 0xff);
+  Serial.print(" - ");
+  t = t >> 8;
+  saveState(1, t & 0xff);
+  Serial.println(t & 0xff);
 }
 
 float fetchFloorTemp() {
-  return 25.0;
+  uint16_t t = (loadState(1) << 8) | loadState(0);
+  Serial.print("Loading data ");
+  Serial.println(t / 10.0);
+  return t / 10.0;
 }
 
 void setup() {
@@ -139,12 +146,8 @@ void loop() {
     lastEpoch = currEpoch;
     reportTemperatures(rtc.getMinutes() % 30 == 0);
     heatUpdateSM(currTemperature[0],currTemperature[1]);
-
-    if ((currEpoch % 15) == 0) {
-      Serial.print("Unix time = ");
-      Serial.println(rtc.getEpoch());
-    }
   }
+  
 }
 
 void reportTemperatures(bool force) {

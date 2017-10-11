@@ -9,7 +9,7 @@
 #define CIRC_PUMP    MYSX_D4_INT
 
 // Interval between we should check if we should let hot water into the system
-#define COOLING_CHECK_INTERVAL 30
+#define COOLING_CHECK_INTERVAL 3 // minutes
 #define HYSTERISIS 0.5
 
 struct heatState {
@@ -50,6 +50,8 @@ void FetchHotWater();
 void WaitForHotWater();
 void setValve(bool state);
 void setPump(bool state);
+void SummerMode();
+void SummerModeTransition();
 
 void setFloorTemperature(float temperature);
 #endif
