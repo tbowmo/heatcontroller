@@ -33,7 +33,8 @@
 #include <MySensors.h>
 #include <RTCZero.h>
 #include "heatState.h"
-#include <Adafruit_NeoPixel.h>
+
+#define FEEDBACK_INTERVAL 1800
 
 // Sensor child definitions
 
@@ -43,7 +44,6 @@
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 RTCZero rtc;
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1, MYSX_D6_PWM, NEO_GRB + NEO_KHZ800);
 
 const uint8_t temp_heatloop  = 0;
 const uint8_t temp_inlet     = 1;
@@ -89,7 +89,7 @@ float fetchFloorTemp() {
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial) {}
+  //while (!Serial) {}
   Serial.println("HeatController 1.0");
   pinMode(LED_BLUE, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
@@ -99,9 +99,10 @@ void setup() {
   pinMode(CIRC_PUMP, OUTPUT);
   rtc.begin();
   float floorTemp = fetchFloorTemp();
-  init(&rtc, floorTemp, sendRelayStates);
+  init(&rtc, floorTemp, 37.0, sendRelayStates);
   MyMessage test(temp_heatloop, V_HVAC_SETPOINT_HEAT);
   send(test.set(floorTemp,1));
+  send(test.setSensor(temp_inlet).set(37.0,1));
 }
 
 void presentation() {
@@ -124,6 +125,15 @@ void receive(const MyMessage &message) {
     if (message.type == V_HVAC_SETPOINT_HEAT) {
       setFloorTemperature(message.getFloat());
       saveFloorTemp(message.getFloat());
+      MyMessage test(temp_heatloop, V_HVAC_SETPOINT_HEAT);
+      send(test.set(message.getFloat(),1)); // Domoticz is only updating it's GUI with a value that is send from us, so send it back again.
+    }
+  }
+  if (message.sensor == temp_inlet) {
+    if (message.type == V_HVAC_SETPOINT_HEAT) {
+      setHotwaterThreshold(message.getFloat());
+      MyMessage test(temp_inlet, V_HVAC_SETPOINT_HEAT);
+      send(test.set(message.getFloat(),1)); // Domoticz is only updating it's GUI with a value that is send from us, so send it back again.
     }
   }
   if (message.sensor == FETCH_HOT_WATER) {
@@ -142,10 +152,12 @@ void receiveTime(uint32_t controllerTime)
 
 void loop() {
   uint32_t currEpoch = rtc.getEpoch();
+  bool force = false;
   if (currEpoch != lastEpoch) {
     lastEpoch = currEpoch;
-    reportTemperatures(rtc.getMinutes() % 30 == 0);
-    reportStates(rtc.getMinutes() % 30 == 0);
+    force = (rtc.getEpoch() % FEEDBACK_INTERVAL) == 0;
+    reportTemperatures(force);
+    reportStates(force);
     heatUpdateSM(currTemperature[0],currTemperature[1]);
   }
   
@@ -183,7 +195,7 @@ void reportStates(bool force) {
   if (force) {
     Serial.print(rtc.getEpoch());
     Serial.println(" -> Sending switch states");
-    for (int i = 5; i < 7; i++) {
+    for (int i = 5; i < 9; i++) {
       send(msgStatus.setSensor(i).set(states[i]));
     }
   }
@@ -198,8 +210,4 @@ void sendRelayStates(uint8_t sensor, bool state) {
   send(msgStatus.setSensor(sensor).set(state));
 }
 
-void setColor(RGBColor rgb ) {
-    pixels.setPixelColor(1, pixels.Color(rgb.R, rgb.G, rgb.B)); // Moderately bright green color.
-    pixels.show(); // This sends the updated pixel color to the hardware.
-}
 

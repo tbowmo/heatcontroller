@@ -6,8 +6,13 @@ static heatSM _heatSM;
 void (*_sendStateCallback)(uint8_t, bool);
 
 void heatSwitchSM(heatState& newState) {
-  Serial.print("Time in previous state ");
+  Serial.print("old state ");
+  Serial.print(_heatSM.currentState->name);
+  Serial.print(" time in state ");
   Serial.println(heatTimeInState());
+  Serial.print("New state ");
+  Serial.println(newState.name);
+  
   // Change state if needed
   if (_heatSM.currentState != &newState) _heatSM.currentState = &newState;
   // Transition event
@@ -31,17 +36,15 @@ void heatUpdateSM(float floorTemp, float inletTemp){
 }
 
 /**********************************/
-static heatState shHeating         = { HeatingTransition, Heating };
-static heatState shCooling         = { CoolingTransition, Cooling };
-static heatState shCheckFloorTemp  = { CheckFloorTempWhileCoolingTransition, CheckFloorTempWhileCooling };
-static heatState shWaitForHotWater = { WaitForHotWaterTransition, WaitForHotWater };
-static heatState shSummer          = { SummerModeTransition, SummerMode };
+static heatState shHeating         = { HeatingTransition, Heating, "Heating"};
+static heatState shCooling         = { CoolingTransition, Cooling, "Cooling"};
+static heatState shCheckFloorTemp  = { CheckFloorTempWhileCoolingTransition, CheckFloorTempWhileCooling, "CheckFloor"};
+static heatState shWaitForHotWater = { WaitForHotWaterTransition, WaitForHotWater, "WaitHotWatter"};
+static heatState shSummer          = { SummerModeTransition, SummerMode, "Summer"};
 /**********************************/
 
 /********* States *************/
 void HeatingTransition() {
-  Serial.print(_heatSM.rtc->getEpoch());
-  Serial.println(" Heat transition");
   setValve(true);
   setPump(true);
 }
@@ -53,8 +56,6 @@ void Heating() {
 }
 
 void CoolingTransition() {
-  Serial.print(_heatSM.rtc->getEpoch());
-  Serial.println(" cooling transition");
   setValve(false);
   setPump(false);
 }
@@ -66,13 +67,11 @@ void Cooling() {
 }
 
 void CheckFloorTempWhileCoolingTransition() {
-  Serial.print(_heatSM.rtc->getEpoch());
-  Serial.println(" Check floor transition");
   setPump(true);
 }
 
 void CheckFloorTempWhileCooling() {
-  if (heatTimeInState() > 60) {
+  if (heatTimeInState() > 120) {
     if(_heatSM.floorTemp < (_heatSM.floorTarget - HYSTERISIS)) {
       heatSwitchSM(shHeating);
     } else {
@@ -95,8 +94,6 @@ void WaitForHotWater() {
 }
 
 void WaitForHotWaterTransition() {
-  Serial.print(_heatSM.rtc->getEpoch());
-  Serial.println(" Fetching hot water");
   digitalWrite(LED_YELLOW, HIGH);
   setValve(true);
   _sendStateCallback(FETCH_HOT_WATER, true);
@@ -124,6 +121,10 @@ void setFloorTemperature(float temperature) {
   _heatSM.floorTarget = temperature;
 }
 
+void setHotwaterThreshold(float temperature) {
+  _heatSM.hotWaterThreshold = temperature;
+}
+
 void setValve(bool state) {
   if (_heatSM.valve != state) {
     _heatSM.valve = state;
@@ -140,9 +141,9 @@ void setPump(bool state) {
   }
 }
 
-void init(RTCZero* rtc, float temperature, void(*sendCallback)(uint8_t, bool)) {
+void init(RTCZero* rtc, float temperature, float hotwater, void(*sendCallback)(uint8_t, bool)) {
   _heatSM.floorTarget = temperature;
-  _heatSM.hotWaterThreshold = 26;
+  _heatSM.hotWaterThreshold = hotwater;
   _heatSM.rtc = rtc;
   _sendStateCallback = sendCallback;
   heatSwitchSM(shHeating);
@@ -157,4 +158,5 @@ void summer(bool state) {
   }
   _sendStateCallback(SUMMER, state);
 }
+
 
