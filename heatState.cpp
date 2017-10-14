@@ -3,7 +3,7 @@
 
 static heatSM _heatSM;
 
-void (*heatCallback)(bool, bool);
+void (*_sendStateCallback)(uint8_t, bool);
 
 void heatSwitchSM(heatState& newState) {
   Serial.print("Time in previous state ");
@@ -34,7 +34,7 @@ void heatUpdateSM(float floorTemp, float inletTemp){
 static heatState shHeating         = { HeatingTransition, Heating };
 static heatState shCooling         = { CoolingTransition, Cooling };
 static heatState shCheckFloorTemp  = { CheckFloorTempWhileCoolingTransition, CheckFloorTempWhileCooling };
-static heatState shWaitForHotWater = { NULL, WaitForHotWater };
+static heatState shWaitForHotWater = { WaitForHotWaterTransition, WaitForHotWater };
 static heatState shSummer          = { SummerModeTransition, SummerMode };
 /**********************************/
 
@@ -85,8 +85,21 @@ void WaitForHotWater() {
   if (_heatSM.inletTemp > _heatSM.hotWaterThreshold) {
     digitalWrite(LED_YELLOW, LOW);
     setValve(false);
-    heatSwitchSM(shCooling);
+    _sendStateCallback(FETCH_HOT_WATER, false);
+    if (_heatSM.summer) {
+      heatSwitchSM(shSummer);
+    } else {
+      heatSwitchSM(shCooling);
+    }
   }
+}
+
+void WaitForHotWaterTransition() {
+  Serial.print(_heatSM.rtc->getEpoch());
+  Serial.println(" Fetching hot water");
+  digitalWrite(LED_YELLOW, HIGH);
+  setValve(true);
+  _sendStateCallback(FETCH_HOT_WATER, true);
 }
 
 void SummerModeTransition() {
@@ -101,10 +114,8 @@ void SummerMode() {
 /**
  * "public" methods
  **/
-void FetchHotWater() {
+void fetchHotWater() {
   if (!heatCurrentStateIs(shHeating)) {
-    digitalWrite(LED_YELLOW, HIGH);
-    setValve(true);
     heatSwitchSM(shWaitForHotWater);
   }
 }
@@ -117,7 +128,7 @@ void setValve(bool state) {
   if (_heatSM.valve != state) {
     _heatSM.valve = state;
     digitalWrite(HEAT_VALVE, state); // Turn on heat valve
-   // heatCallback(state, _heatSM.pump);
+    _sendStateCallback(VALVE_SWITCH, state);
   }
 }
 
@@ -125,15 +136,25 @@ void setPump(bool state) {
   if (_heatSM.pump != state) {
     _heatSM.pump = state;
     digitalWrite(CIRC_PUMP, state);
-   // heatCallback(_heatSM.valve, state);
+    _sendStateCallback(PUMP_SWITCH, state);
   }
 }
 
-void init(RTCZero* rtc, float temperature, void(*sendCallback)(bool, bool)) {
+void init(RTCZero* rtc, float temperature, void(*sendCallback)(uint8_t, bool)) {
   _heatSM.floorTarget = temperature;
-  _heatSM.hotWaterThreshold = 50;
+  _heatSM.hotWaterThreshold = 26;
   _heatSM.rtc = rtc;
+  _sendStateCallback = sendCallback;
   heatSwitchSM(shHeating);
-  sendCallback(false, false);
-  heatCallback = sendCallback;
 }
+
+void summer(bool state) {
+  _heatSM.summer = state;
+  if (state) {
+    heatSwitchSM(shSummer);
+  } else {
+    heatSwitchSM(shHeating);
+  }
+  _sendStateCallback(SUMMER, state);
+}
+

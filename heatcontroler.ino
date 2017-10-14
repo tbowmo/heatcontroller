@@ -27,23 +27,15 @@
 #define MY_RADIO_NRF24
 #define MY_DEBUG
 #define MY_NODE_ID 20
+#define MY_REPEATER_FEATURE
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <MySensors.h>
 #include <RTCZero.h>
 #include "heatState.h"
+#include <Adafruit_NeoPixel.h>
 
 // Sensor child definitions
-
-#define FLOOR_HEAT_LOOP 0
-#define TEMP_INLET      1
-#define TEMP_OUTLET     2
-#define TEMP_HOT_WATER  3
-
-#define FETCH_HOT_WATER 5
-#define HEAT_ON         6
-#define PUMP_ON         7
-
 
 #define ON              true
 #define OFF             false
@@ -51,6 +43,7 @@
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 RTCZero rtc;
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1, MYSX_D6_PWM, NEO_GRB + NEO_KHZ800);
 
 const uint8_t temp_heatloop  = 0;
 const uint8_t temp_inlet     = 1;
@@ -59,17 +52,18 @@ const uint8_t temp_hot_water = 3;
 uint32_t lastEpoch;
 
 // Temperature sensors (Hardcoded here, as it makes it so much easier to reference them later on)
-DeviceAddress Sensors[4] = {/*temp_heatloop = */{ 0x28, 0x56, 0xDB, 0x30, 0x0, 0x0, 0x0, 0xE4 }, // 1
+const DeviceAddress Sensors[4] = {/*temp_heatloop = */{ 0x28, 0x56, 0xDB, 0x30, 0x0, 0x0, 0x0, 0xE4 }, // 1
                             /*temp_in =       */{ 0x28, 0x76, 0xAB, 0x19, 0x5, 0x0, 0x0, 0xE9 }, // 2
                             /*temp_out =      */{ 0x28, 0x81, 0xB9, 0x19, 0x5, 0x0, 0x0, 0xE1 }, // 3
                             /*temp_hot_water  */{ 0x28, 0xB1, 0x1F, 0x31, 0x0, 0x0, 0x0, 0xFA }};
 
+bool states[10];
 
 const float hysterisis = 1.0;
 
 // Mysensor Message objects
-MyMessage msgTemperature(FLOOR_HEAT_LOOP, V_TEMP);
-MyMessage msgStatus(HEAT_ON, V_STATUS);
+MyMessage msgTemperature(temp_heatloop, V_TEMP);
+MyMessage msgStatus(VALVE_SWITCH, V_STATUS);
 
 // Global variables
 float lastTemperature[4];
@@ -105,33 +99,39 @@ void setup() {
   pinMode(CIRC_PUMP, OUTPUT);
   rtc.begin();
   float floorTemp = fetchFloorTemp();
-  init(&rtc, floorTemp, &sendRelayStates);
-  MyMessage test(FLOOR_HEAT_LOOP, V_HVAC_SETPOINT_HEAT);
+  init(&rtc, floorTemp, sendRelayStates);
+  MyMessage test(temp_heatloop, V_HVAC_SETPOINT_HEAT);
   send(test.set(floorTemp,1));
 }
 
 void presentation() {
   sendSketchInfo("HeatController", "1.0");
-  present(FLOOR_HEAT_LOOP, S_HEATER);
-  present(TEMP_INLET, S_TEMP);
-  present(TEMP_OUTLET, S_TEMP);
-  present(TEMP_HOT_WATER, S_TEMP);
+  present(temp_heatloop, S_HEATER);
+  present(temp_inlet, S_TEMP);
+  present(temp_outlet, S_TEMP);
+  present(temp_hot_water, S_TEMP);
   present(FETCH_HOT_WATER, S_LIGHT);
-  present(HEAT_ON, S_LIGHT);
-  present(PUMP_ON, S_LIGHT);
+  present(VALVE_SWITCH, S_LIGHT);
+  present(PUMP_SWITCH, S_LIGHT);
+  present(SUMMER, S_LIGHT);
   requestTime();
 }
 
 void receive(const MyMessage &message) {
   Serial.print(F("Remote command : "));
-  if (message.sensor == FLOOR_HEAT_LOOP) {
+  Serial.print(message.sensor);
+  if (message.sensor == temp_heatloop) {
     if (message.type == V_HVAC_SETPOINT_HEAT) {
       setFloorTemperature(message.getFloat());
       saveFloorTemp(message.getFloat());
     }
   }
   if (message.sensor == FETCH_HOT_WATER) {
-    FetchHotWater();
+    Serial.println("fetching hot water");
+    fetchHotWater();
+  }
+  if (message.sensor == SUMMER) {
+    summer(message.getBool());
   }
 }
 
@@ -145,6 +145,7 @@ void loop() {
   if (currEpoch != lastEpoch) {
     lastEpoch = currEpoch;
     reportTemperatures(rtc.getMinutes() % 30 == 0);
+    reportStates(rtc.getMinutes() % 30 == 0);
     heatUpdateSM(currTemperature[0],currTemperature[1]);
   }
   
@@ -178,8 +179,27 @@ void reportTemperatures(bool force) {
   }
 }
 
-void sendRelayStates(bool valve, bool pump) {
-  send(msgStatus.setSensor(HEAT_ON).set(valve));
-  send(msgStatus.setSensor(PUMP_ON).set(pump));
+void reportStates(bool force) {
+  if (force) {
+    Serial.print(rtc.getEpoch());
+    Serial.println(" -> Sending switch states");
+    for (int i = 5; i < 7; i++) {
+      send(msgStatus.setSensor(i).set(states[i]));
+    }
+  }
+}
+
+void sendRelayStates(uint8_t sensor, bool state) {
+  Serial.print("Callback ");
+  Serial.print(sensor);
+  Serial.print(" - ");
+  Serial.println(state);
+  states[sensor] = state;
+  send(msgStatus.setSensor(sensor).set(state));
+}
+
+void setColor(RGBColor rgb ) {
+    pixels.setPixelColor(1, pixels.Color(rgb.R, rgb.G, rgb.B)); // Moderately bright green color.
+    pixels.show(); // This sends the updated pixel color to the hardware.
 }
 
