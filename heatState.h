@@ -40,7 +40,7 @@ typedef struct {
 
 } heatSM;
 
-void init(RTCZero* rtc, float temperature, float hotwater, void(*sendCallback)(uint8_t, bool));
+void init(RTCZero* rtc, void(*sendCallback)(uint8_t, bool));
 
 void heatSwitchSM(heatState& newState);   // Change the state in the machine
 void heatUpdateSM(float floorTemp, float inletTemp);                         // Update the state machine (transition once, then update) etc.

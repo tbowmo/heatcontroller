@@ -71,7 +71,7 @@ void CheckFloorTempWhileCoolingTransition() {
 }
 
 void CheckFloorTempWhileCooling() {
-  if (heatTimeInState() > 120) {
+  if (heatTimeInState() > 300) {
     if(_heatSM.floorTemp < (_heatSM.floorTarget - HYSTERISIS)) {
       heatSwitchSM(shHeating);
     } else {
@@ -141,9 +141,7 @@ void setPump(bool state) {
   }
 }
 
-void init(RTCZero* rtc, float temperature, float hotwater, void(*sendCallback)(uint8_t, bool)) {
-  _heatSM.floorTarget = temperature;
-  _heatSM.hotWaterThreshold = hotwater;
+void init(RTCZero* rtc, void(*sendCallback)(uint8_t, bool)) {
   _heatSM.rtc = rtc;
   _sendStateCallback = sendCallback;
   heatSwitchSM(shHeating);
@@ -158,5 +156,4 @@ void summer(bool state) {
   }
   _sendStateCallback(SUMMER, state);
 }
-
 

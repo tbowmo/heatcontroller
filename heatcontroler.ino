@@ -51,6 +51,8 @@ const uint8_t temp_outlet    = 2;
 const uint8_t temp_hot_water = 3;
 uint32_t lastEpoch;
 
+const uint8_t sensor_loop_config = 10;
+
 // Temperature sensors (Hardcoded here, as it makes it so much easier to reference them later on)
 const DeviceAddress Sensors[4] = {/*temp_heatloop = */{ 0x28, 0x56, 0xDB, 0x30, 0x0, 0x0, 0x0, 0xE4 }, // 1
                             /*temp_in =       */{ 0x28, 0x76, 0xAB, 0x19, 0x5, 0x0, 0x0, 0xE9 }, // 2
@@ -99,10 +101,15 @@ void setup() {
   pinMode(CIRC_PUMP, OUTPUT);
   rtc.begin();
   float floorTemp = fetchFloorTemp();
-  init(&rtc, floorTemp, 37.0, sendRelayStates);
+  
+  init(&rtc, sendRelayStates);
+  setFloorTemperature(floorTemp);
+  setHotwaterThreshold(37);
+  
   MyMessage test(temp_heatloop, V_HVAC_SETPOINT_HEAT);
   send(test.set(floorTemp,1));
   send(test.setSensor(temp_inlet).set(37.0,1));
+  
 }
 
 void presentation() {
@@ -121,20 +128,16 @@ void presentation() {
 void receive(const MyMessage &message) {
   Serial.print(F("Remote command : "));
   Serial.print(message.sensor);
-  if (message.sensor == temp_heatloop) {
-    if (message.type == V_HVAC_SETPOINT_HEAT) {
+  if (message.type == V_HVAC_SETPOINT_HEAT) {
+    if(message.sensor == temp_heatloop) {
       setFloorTemperature(message.getFloat());
       saveFloorTemp(message.getFloat());
-      MyMessage test(temp_heatloop, V_HVAC_SETPOINT_HEAT);
-      send(test.set(message.getFloat(),1)); // Domoticz is only updating it's GUI with a value that is send from us, so send it back again.
     }
-  }
-  if (message.sensor == temp_inlet) {
-    if (message.type == V_HVAC_SETPOINT_HEAT) {
+    if (message.sensor == temp_inlet) {
       setHotwaterThreshold(message.getFloat());
-      MyMessage test(temp_inlet, V_HVAC_SETPOINT_HEAT);
-      send(test.set(message.getFloat(),1)); // Domoticz is only updating it's GUI with a value that is send from us, so send it back again.
     }
+    MyMessage test(message.sensor, V_HVAC_SETPOINT_HEAT);
+    send(test.set(message.getFloat(),1)); // Domoticz is only updating it's GUI with a value that is send from us, so send it back again.
   }
   if (message.sensor == FETCH_HOT_WATER) {
     Serial.println("fetching hot water");
@@ -142,6 +145,12 @@ void receive(const MyMessage &message) {
   }
   if (message.sensor == SUMMER) {
     summer(message.getBool());
+  }
+  if (message.sensor == VALVE_SWITCH) {
+    setValve(message.getBool());
+  }
+  if (message.sensor == PUMP_SWITCH) {
+    setPump(message.getBool());
   }
 }
 
