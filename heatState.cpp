@@ -25,18 +25,21 @@ bool heatCurrentStateIs(heatState& state) {
   return _heatSM.currentState ==  &state;
 }
 
+uint32_t heatMinutesInState() {
+  return heatTimeInState() / 60;
+}
+
 uint32_t heatTimeInState() {
   return _heatSM.rtc->getEpoch() - _heatSM.stateEnter;
 }
 
-void heatUpdateSM(float floorTemp, float inletTemp){
-  _heatSM.floorTemp = floorTemp;
-  _heatSM.inletTemp = inletTemp;
+void heatUpdateSM() {
   if (_heatSM.currentState->Update) _heatSM.currentState->Update();
 }
 
 /**********************************/
 static heatState shHeating         = { HeatingTransition, Heating, "Heating"};
+static heatState shHeatCheck       = { HeatCheckTransition, HeatCheck, "Check heating"};
 static heatState shCooling         = { CoolingTransition, Cooling, "Cooling"};
 static heatState shCheckFloorTemp  = { CheckFloorTempWhileCoolingTransition, CheckFloorTempWhileCooling, "CheckFloor"};
 static heatState shWaitForHotWater = { WaitForHotWaterTransition, WaitForHotWater, "WaitHotWatter"};
@@ -51,7 +54,22 @@ void HeatingTransition() {
 
 void Heating() {
   if(_heatSM.floorTemp > (_heatSM.floorTarget + HYSTERISIS)) {
-    heatSwitchSM(shCooling);
+    heatSwitchSM(shHeatCheck);
+  }
+}
+
+void HeatCheckTransition() {
+  setValve(false);
+  setPump(true);
+}
+
+void HeatCheck() {
+  if (heatMinutesInState() > PUMP_RUN_TIME_BEFORE_CHECK) {
+    if(_heatSM.floorTemp > (_heatSM.floorTarget)) {
+      heatSwitchSM(shCooling);
+    } else {
+      heatSwitchSM(shHeating);
+    }
   }
 }
 
@@ -71,7 +89,7 @@ void CheckFloorTempWhileCoolingTransition() {
 }
 
 void CheckFloorTempWhileCooling() {
-  if (heatTimeInState() > 300) {
+  if (heatMinutesInState() > PUMP_RUN_TIME_BEFORE_CHECK) {
     if(_heatSM.floorTemp < (_heatSM.floorTarget - HYSTERISIS)) {
       heatSwitchSM(shHeating);
     } else {
@@ -81,7 +99,7 @@ void CheckFloorTempWhileCooling() {
 }
 
 void WaitForHotWater() {
-  if (_heatSM.inletTemp > _heatSM.hotWaterThreshold) {
+  if (_heatSM.inletTemp > _heatSM.inletTarget) {
     digitalWrite(LED_YELLOW, LOW);
     setValve(false);
     _sendStateCallback(FETCH_HOT_WATER, false);
@@ -117,12 +135,12 @@ void fetchHotWater() {
   }
 }
 
-void setFloorTemperature(float temperature) {
+void setFloorThreshold(float temperature) {
   _heatSM.floorTarget = temperature;
 }
 
 void setHotwaterThreshold(float temperature) {
-  _heatSM.hotWaterThreshold = temperature;
+  _heatSM.inletTarget = temperature;
 }
 
 void setValve(bool state) {
@@ -155,5 +173,14 @@ void summer(bool state) {
     heatSwitchSM(shHeating);
   }
   _sendStateCallback(SUMMER, state);
+}
+
+void currentTemperature(uint8_t sensor, float temperature) {
+  if (sensor == TEMP_HEATLOOP) {
+    _heatSM.floorTemp = temperature;
+  }
+  if (sensor == TEMP_INLET) {
+    _heatSM.inletTemp = temperature;
+  }
 }
 

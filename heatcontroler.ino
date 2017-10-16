@@ -24,6 +24,13 @@
  */
 
 
+/*  This file contains the main initialization, and mysensors communications
+ *  For the state machine, look at heatState.cpp / heatState.h 
+ *  
+ *  The state machine handles the thermostat activity, and run more or less
+ *  autonomously.
+ */
+
 #define MY_RADIO_NRF24
 #define MY_DEBUG
 #define MY_NODE_ID 20
@@ -36,40 +43,25 @@
 
 #define FEEDBACK_INTERVAL 1800
 
-// Sensor child definitions
-
-#define ON              true
-#define OFF             false
 // Object creation
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 RTCZero rtc;
 
-const uint8_t temp_heatloop  = 0;
-const uint8_t temp_inlet     = 1;
-const uint8_t temp_outlet    = 2;
-const uint8_t temp_hot_water = 3;
-uint32_t lastEpoch;
-
-const uint8_t sensor_loop_config = 10;
+// Mysensor Message objects
+MyMessage msgTemperature(TEMP_HEATLOOP, V_TEMP);
+MyMessage msgStatus(VALVE_SWITCH, V_STATUS);
 
 // Temperature sensors (Hardcoded here, as it makes it so much easier to reference them later on)
-const DeviceAddress Sensors[4] = {/*temp_heatloop = */{ 0x28, 0x56, 0xDB, 0x30, 0x0, 0x0, 0x0, 0xE4 }, // 1
+const DeviceAddress Sensors[4] = {/*TEMP_HEATLOOP = */{ 0x28, 0x56, 0xDB, 0x30, 0x0, 0x0, 0x0, 0xE4 }, // 1
                             /*temp_in =       */{ 0x28, 0x76, 0xAB, 0x19, 0x5, 0x0, 0x0, 0xE9 }, // 2
                             /*temp_out =      */{ 0x28, 0x81, 0xB9, 0x19, 0x5, 0x0, 0x0, 0xE1 }, // 3
-                            /*temp_hot_water  */{ 0x28, 0xB1, 0x1F, 0x31, 0x0, 0x0, 0x0, 0xFA }};
-
-bool states[10];
-
-const float hysterisis = 1.0;
-
-// Mysensor Message objects
-MyMessage msgTemperature(temp_heatloop, V_TEMP);
-MyMessage msgStatus(VALVE_SWITCH, V_STATUS);
+                            /*TEMP_HOT_WATER  */{ 0x28, 0xB1, 0x1F, 0x31, 0x0, 0x0, 0x0, 0xFA }};
 
 // Global variables
 float lastTemperature[4];
-float currTemperature[4];
+bool  states[10];
+uint32_t lastEpoch;
 
 void saveFloorTemp(float temp) {
   Serial.print("Storing value ");
@@ -103,21 +95,20 @@ void setup() {
   float floorTemp = fetchFloorTemp();
   
   init(&rtc, sendRelayStates);
-  setFloorTemperature(floorTemp);
+  setFloorThreshold(floorTemp);
   setHotwaterThreshold(37);
   
-  MyMessage test(temp_heatloop, V_HVAC_SETPOINT_HEAT);
+  MyMessage test(TEMP_HEATLOOP, V_HVAC_SETPOINT_HEAT);
   send(test.set(floorTemp,1));
-  send(test.setSensor(temp_inlet).set(37.0,1));
-  
+  send(test.setSensor(TEMP_INLET).set(37.0,1));
 }
 
 void presentation() {
   sendSketchInfo("HeatController", "1.0");
-  present(temp_heatloop, S_HEATER);
-  present(temp_inlet, S_TEMP);
-  present(temp_outlet, S_TEMP);
-  present(temp_hot_water, S_TEMP);
+  present(TEMP_HEATLOOP, S_HEATER);
+  present(TEMP_INLET, S_TEMP);
+  present(TEMP_OUTLET, S_TEMP);
+  present(TEMP_HOT_WATER, S_TEMP);
   present(FETCH_HOT_WATER, S_LIGHT);
   present(VALVE_SWITCH, S_LIGHT);
   present(PUMP_SWITCH, S_LIGHT);
@@ -129,18 +120,17 @@ void receive(const MyMessage &message) {
   Serial.print(F("Remote command : "));
   Serial.print(message.sensor);
   if (message.type == V_HVAC_SETPOINT_HEAT) {
-    if(message.sensor == temp_heatloop) {
-      setFloorTemperature(message.getFloat());
+    if(message.sensor == TEMP_HEATLOOP) {
+      setFloorThreshold(message.getFloat());
       saveFloorTemp(message.getFloat());
     }
-    if (message.sensor == temp_inlet) {
+    if (message.sensor == TEMP_INLET) {
       setHotwaterThreshold(message.getFloat());
     }
     MyMessage test(message.sensor, V_HVAC_SETPOINT_HEAT);
     send(test.set(message.getFloat(),1)); // Domoticz is only updating it's GUI with a value that is send from us, so send it back again.
   }
   if (message.sensor == FETCH_HOT_WATER) {
-    Serial.println("fetching hot water");
     fetchHotWater();
   }
   if (message.sensor == SUMMER) {
@@ -167,9 +157,8 @@ void loop() {
     force = (rtc.getEpoch() % FEEDBACK_INTERVAL) == 0;
     reportTemperatures(force);
     reportStates(force);
-    heatUpdateSM(currTemperature[0],currTemperature[1]);
+    heatUpdateSM();
   }
-  
 }
 
 void reportTemperatures(bool force) {
@@ -181,13 +170,13 @@ void reportTemperatures(bool force) {
   wait(conversionTime);
 
   // Read temperatures and send them to controller
-  for (int i=0; i< 4; i++) {
+  for (uint8_t i=0; i< 4; i++) {
     // Fetch and round temperature to one decimal
     float temperature = sensors.getTempC(Sensors[i]);
     // Only send data if temperature has changed and no error
     if (temperature != -127.00 && temperature != 85.00) {
-      currTemperature[i] = temperature;
-      if (force || (abs(lastTemperature[i] - temperature) > 0.5)) {
+      currentTemperature(i, temperature); 
+      if (force || (abs(lastTemperature[i] - temperature) > 0.2)) {
         // Send in the new temperature
         send(msgTemperature.setSensor(i).set(temperature,1));
         Serial.print(i);
@@ -218,5 +207,4 @@ void sendRelayStates(uint8_t sensor, bool state) {
   states[sensor] = state;
   send(msgStatus.setSensor(sensor).set(state));
 }
-
 

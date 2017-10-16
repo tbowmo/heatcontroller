@@ -8,19 +8,26 @@
 #define HEAT_VALVE   MYSX_D3_INT
 #define CIRC_PUMP    MYSX_D4_INT
 
-static const uint8_t FETCH_HOT_WATER = 5;
-static const uint8_t VALVE_SWITCH    = 6;
-static const uint8_t PUMP_SWITCH     = 7;
-static const uint8_t SUMMER          = 8;
+const uint8_t TEMP_HEATLOOP  = 0;
+const uint8_t TEMP_INLET     = 1;
+const uint8_t TEMP_OUTLET    = 2;
+const uint8_t TEMP_HOT_WATER = 3;
+
+const uint8_t FETCH_HOT_WATER = 5;
+const uint8_t VALVE_SWITCH    = 6;
+const uint8_t PUMP_SWITCH     = 7;
+const uint8_t SUMMER          = 8;
+// temperature sensors (relay sensors are defined in heatState)
 
 // Interval between we should check if we should let hot water into the system
-#define COOLING_CHECK_INTERVAL 30 // minutes
+#define COOLING_CHECK_INTERVAL      30    // minutes
+#define PUMP_RUN_TIME_BEFORE_CHECK  3     // minutes
 #define HYSTERISIS 0.5
 
 struct heatState {
   void(*Transition)();
   void(*Update)();
-  char* name;
+  const char* name;
 };
 
 
@@ -30,7 +37,7 @@ typedef struct {
   float floorTemp;
   float inletTemp;
   float floorTarget;
-  float hotWaterThreshold;
+  float inletTarget;
   uint32_t stateEnter;
   uint32_t stateEnterMinutes;
   RTCZero* rtc;
@@ -42,26 +49,32 @@ typedef struct {
 
 void init(RTCZero* rtc, void(*sendCallback)(uint8_t, bool));
 
-void heatSwitchSM(heatState& newState);   // Change the state in the machine
-void heatUpdateSM(float floorTemp, float inletTemp);                         // Update the state machine (transition once, then update) etc.
-uint32_t heatTimeInState();                  // Time elapsed in state
+void heatSwitchSM(heatState& newState);      // Change the state in the machine
+void heatUpdateSM();                         // Update the state machine (transition once, then update) etc.
+uint32_t heatTimeInState();                  // Time elapsed in state (in seconds!)
 bool heatCurrentStateIs(heatState& state);
 void fetchHotWater();
-void setFloorTemperature(float temperature);
+void setFloorThreshold(float temperature);
 void setHotwaterThreshold(float temperature); 
 void summer(bool enable);
+void currentTemperature(uint8_t sensor, float temperature);
+void setValve(bool state);
+void setPump(bool state);
 
-/********************************************************************/
+/********************************************************************
+ * states / state transitions below here, should not be called outside
+ * the statemachine.
+ */
 void HeatingTransition();
 void Heating();
+void HeatCheckTransition();
+void HeatCheck();
 void CoolingTransition();
 void Cooling();
 void CheckFloorTempWhileCooling();
 void CheckFloorTempWhileCoolingTransition();
 void WaitForHotWater();
 void WaitForHotWaterTransition();
-void setValve(bool state);
-void setPump(bool state);
 void SummerMode();
 void SummerModeTransition();
 
