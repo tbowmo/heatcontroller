@@ -158,6 +158,11 @@ void loop() {
     reportTemperatures(force);
     reportStates(force);
     heatUpdateSM();
+    if (rtc.getHours() == 12 &&
+        rtc.getMinutes() == 0 &&
+        rtc.getSeconds() == 0) {
+          requestTime(); // Request time once every day at 12:00
+        }
   }
 }
 

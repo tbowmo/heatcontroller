@@ -43,8 +43,6 @@ typedef struct {
   RTCZero* rtc;
   bool valve;
   bool pump;
-  bool summer;
-
 } heatSM;
 
 void init(RTCZero* rtc, void(*sendCallback)(uint8_t, bool));

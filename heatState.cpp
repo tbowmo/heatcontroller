@@ -4,6 +4,8 @@
 static heatSM _heatSM;
 
 void (*_sendStateCallback)(uint8_t, bool);
+static heatState* stateBeforeFetchWater;
+
 
 void heatSwitchSM(heatState& newState) {
   Serial.print("old state ");
@@ -103,11 +105,7 @@ void WaitForHotWater() {
     digitalWrite(LED_YELLOW, LOW);
     setValve(false);
     _sendStateCallback(FETCH_HOT_WATER, false);
-    if (_heatSM.summer) {
-      heatSwitchSM(shSummer);
-    } else {
-      heatSwitchSM(shCooling);
-    }
+    heatSwitchSM(*stateBeforeFetchWater);
   }
 }
 
@@ -130,7 +128,8 @@ void SummerMode() {
  * "public" methods
  **/
 void fetchHotWater() {
-  if (!heatCurrentStateIs(shHeating)) {
+  if ((_heatSM.inletTemp < _heatSM.inletTarget) && !_heatSM.valve) {
+    stateBeforeFetchWater = _heatSM.currentState;
     heatSwitchSM(shWaitForHotWater);
   }
 }
@@ -166,7 +165,6 @@ void init(RTCZero* rtc, void(*sendCallback)(uint8_t, bool)) {
 }
 
 void summer(bool state) {
-  _heatSM.summer = state;
   if (state) {
     heatSwitchSM(shSummer);
   } else {
