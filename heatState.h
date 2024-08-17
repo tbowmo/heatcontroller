@@ -8,7 +8,7 @@
 #define HEAT_VALVE   MYSX_D3_INT
 #define CIRC_PUMP    MYSX_D4_INT
 
-const uint8_t TEMP_HEATLOOP  = 0;
+const uint8_t TEMP_FLOOR     = 0;
 const uint8_t TEMP_INLET     = 1;
 const uint8_t TEMP_OUTLET    = 2;
 const uint8_t TEMP_HOT_WATER = 3;
@@ -53,7 +53,9 @@ uint32_t heatTimeInState();                  // Time elapsed in state (in second
 bool heatCurrentStateIs(heatState& state);
 void fetchHotWater();
 void setFloorThreshold(float temperature);
-void setHotwaterThreshold(float temperature); 
+float getFloorThreshold();
+void setHotWaterThreshold(float temperature);
+float getHotWaterThreshold();
 void summer(bool enable);
 void currentTemperature(uint8_t sensor, float temperature);
 void setValve(bool state);

@@ -138,8 +138,16 @@ void setFloorThreshold(float temperature) {
   _heatSM.floorTarget = temperature;
 }
 
-void setHotwaterThreshold(float temperature) {
+float getFloorThreshold() {
+  return _heatSM.floorTarget;
+}
+
+void setHotWaterThreshold(float temperature) {
   _heatSM.inletTarget = temperature;
+}
+
+float getHotWaterThreshold() {
+  return _heatSM.inletTarget;
 }
 
 void setValve(bool state) {
@@ -174,11 +182,10 @@ void summer(bool state) {
 }
 
 void currentTemperature(uint8_t sensor, float temperature) {
-  if (sensor == TEMP_HEATLOOP) {
+  if (sensor == TEMP_FLOOR) {
     _heatSM.floorTemp = temperature;
   }
   if (sensor == TEMP_INLET) {
     _heatSM.inletTemp = temperature;
   }
 }
-
